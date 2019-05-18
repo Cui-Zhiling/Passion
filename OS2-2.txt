@@ -1,0 +1,119 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include <pthread.h>
+#include <unistd.h> 
+#include <semaphore.h> 
+#include <fcntl.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/hcm.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+
+
+#define SIZE 4096
+//创建模式权限
+#define FILE_MODE  (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
+
+int main(int argc,char **argv)
+{
+    sem_t * mut_cou = NULL;     /* 用于读者数量的互斥访问*/
+    sem_t * rw = NULL;          //用于读者和写着之间互斥访问共享文件
+
+    sem_t * queue = NULL;
+
+    int * wr_cou;
+
+    int *rea_cou = NULL;        //共享的变量，用于保存当前读者的人数
+
+    char * sha_buf = NULL;      //共享缓冲区，模拟共享文件
+
+    int shm_fd = 0;         //用于映射共享内存
+
+    int wait_time = 0;
+
+    pid_t pid = getpid();
+
+      //创建mutex_count信号量，初始值为1
+    if((mut_cou = sem_open("mutex_count",O_CREAT,FILE_MODE,1)) == SEM_FAILED)
+    {
+          printf("sem_open 1 %s Error\n",argv[0]);
+          exit(-1);
+    }    
+
+    //创建rw信号量，初始值为1
+    if((rw = sem_open("rw",O_CREAT,FILE_MODE,1)) == SEM_FAILED)
+    {
+          printf("sem_open 2 %s Error\n",argv[0]);
+          exit(-1);
+    }  
+
+    //创建排队信号量，初始值为1
+    if((queue = sem_open("queue",O_CREAT,FILE_MODE,1)) == SEM_FAILED)
+    {
+          printf("sem_open 3 %s Error\n",argv[0]);
+          exit(-1);
+    } 
+
+
+
+    //创建共享内存空间
+    /* create the shared memory segment */
+    shm_fd = shm_open("buf", O_CREAT | O_RDWR, 0666);
+    /* configure the size of the shared memory segment */
+    ftruncate(shm_fd,SIZE);
+    /* now map the shared memory segment in the address space of the process */
+    sha_buf =(char*) mmap(0,SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (sha_buf == MAP_FAILED) 
+    {
+        printf("Map buf failed\n");
+        return -1;
+    }
+
+    //创建共享变量（读者数量）内存空间
+    /* create the shared memory segment */
+    shm_fd = shm_open("rea_cou", O_CREAT | O_RDWR, 0666);
+    /* configure the size of the shared memory segment */
+    ftruncate(shm_fd,1);
+    /* now map the shared memory segment in the address space of the process */
+    rea_cou = (int *)mmap(0,SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (rea_cou == MAP_FAILED) {
+        printf("Map count  failed\n");
+        return -1;
+    }
+
+    //创建共享变量（写者数量）内存空间
+    shm_fd = shm_open("wr_cou", O_CREAT | O_RDWR, 0666);
+    ftruncate(shm_fd,1);
+    wr_cou = (int *)mmap(0,SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (wr_cou == MAP_FAILED) {
+        printf("Map count  failed\n");
+        return -1;
+    }
+
+    while(1)
+    {
+
+        sem_wait(rw);       //申请访问文件
+        if(0 == *wr_cou)    //如果是第一个写者，则需要排队。
+            sem_wait(queue);
+        ++(*wr_cou);        //写者人数加1
+
+
+        printf("I am %d writer.I am writing to the file.\n",pid);
+        sprintf(sha_buf,"%d writer recorded the infomation",pid);
+
+        --(*wr_cou);        //写者人数减1
+        if(0 == *wr_cou )   //如果是最后一个写者则释放queue
+            sem_post(queue);
+        sem_post(rw);
+
+        wait_time = rand()%5;
+        sleep(wait_time);   //随机休息
+
+    }
+
+    return 0;
+}
+
+

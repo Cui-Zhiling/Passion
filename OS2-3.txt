@@ -1,0 +1,101 @@
+/*  读者写者问题-读者优先 */
+# include <stdio.h>
+# include <stdlib.h>
+# include <time.h>
+# include <sys/types.h>
+# include <pthread.h>
+# include <semaphore.h>
+# include <string.h>
+# include <unistd.h>
+
+//信号量 
+sem_t wrt, mutex;
+int readCount;  //读者数量 
+struct data {   //进程属性结构体 
+    int id;
+    int opTime;
+    int lastTime;
+};
+
+//读者
+void* Reader(void* param) {
+    int id = ((struct data*)param)->id;
+    int lastTime = ((struct data*)param)->lastTime;
+    int opTime = ((struct data*)param)->opTime;
+
+    sleep(opTime);
+    printf("进程 %d: 等待读文件\n", id);
+    sem_wait(&mutex); //信号量-1 
+    readCount++;
+    if(readCount == 1) //
+        sem_wait(&wrt);
+    sem_post(&mutex);
+
+    printf("进程 %d: 开始读文件\n", id);
+    sleep(lastTime);
+    printf("进程 %d: 结束读文件\n", id);
+    sem_wait(&mutex);
+    readCount--;
+    if(readCount == 0) //没有读者进程在读
+        sem_post(&wrt);
+    sem_post(&mutex); //信号量+1
+    pthread_exit(0);
+}
+
+//写者
+void* Writer(void* param) {
+    int id = ((struct data*)param)->id;
+    int lastTime = ((struct data*)param)->lastTime;
+    int opTime = ((struct data*)param)->opTime;
+
+    sleep(opTime);
+    printf("进程 %d: 等待写文件\n", id);
+    sem_wait(&wrt);
+    printf("进程 %d: 开始写文件\n", id);
+    sleep(lastTime);
+    printf("进程 %d: 结束写文件\n", id);
+    sem_post(&wrt);
+    pthread_exit(0);
+}
+
+int main() {
+    //进程 
+    pthread_t tid; // the thread identifier
+    pthread_attr_t attr; //set of thread attributes
+    //默认属性 
+    pthread_attr_init(&attr);
+    //初始化信号量 
+    sem_init(&mutex, 0, 1);
+    sem_init(&wrt, 0, 1);
+    readCount = 0;
+
+    int id = 0;
+    while(scanf("%d", &id) != EOF) {
+
+        char role;      //role W或R 
+        int opTime;     //开始时间 
+        int lastTime;   //运行时间 
+        scanf("%c%d%d", &role, &opTime, &lastTime);
+        struct data* d = (struct data*)malloc(sizeof(struct data));
+
+        d->id = id;
+        d->opTime = opTime;
+        d->lastTime = lastTime;
+        if(role == 'R') {
+            printf("创建  %d 进程: 读者\n", id);
+            pthread_create(&tid, &attr, Reader, d);
+        }
+        else if(role == 'W') {
+            printf("创建  %d 进程: 写者\n", id);
+            pthread_create(&tid, &attr, Writer, d);
+        }
+             // printf("---------------------------------\n");
+    }
+
+    //信号量销毁
+    sem_destroy(&mutex);
+    sem_destroy(&wrt);
+    return 0;
+}
+
+//进程号 进程类型 进程开始时间 进程结束时间 

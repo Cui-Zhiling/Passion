@@ -1,0 +1,43 @@
+#include <sys/types.h>
+#include <signal.h>
+#include <unistd.h>
+#include <sys/wait.h>
+int main()
+{
+  pid_t pid1,pid2;
+  printf("父进程正在执行!\n");
+  pid1=fork();
+  if (pid1 < 0)
+  {
+    printf ("子进程1创建失败!\n");
+  }
+  else if (pid1== 0)
+  {
+   printf ("子进程1正在执行!\n");
+  }
+
+  pid2=fork();
+  if(pid2<0)
+  {
+    printf ("子进程2创建失败!\n");
+  }
+  else if(pid2==0)
+  {
+  printf ("子进程2正在执行!\n");
+  }
+
+
+   sleep(2);
+   kill(pid1,SIGKILL);
+   printf("子进程1被杀死\n");
+
+   sleep(2);
+   kill(pid2,SIGKILL);
+   printf("子进程2被杀死\n");
+
+   sleep(2);
+   printf("父进程结束\n");
+
+
+return 0;
+}
